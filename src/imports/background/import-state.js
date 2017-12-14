@@ -1,6 +1,7 @@
 import { mapToObject } from 'src/util/map-set-helpers'
 
 class ImportStateManager {
+    static STATE_STORAGE_KEY = 'import-state-manager'
     static STORAGE_PREFIX = 'import-items-'
     static DEF_CHUNK_SIZE = 100
     static generateChunkKey = key =>
@@ -9,7 +10,7 @@ class ImportStateManager {
     /**
      * @property {string[]} Stack of different storage keys used for storing import items state.
      */
-    storageKeyStack = []
+    storageKeyStack
 
     /**
      * @property {number}
@@ -21,6 +22,28 @@ class ImportStateManager {
      */
     constructor(initChunkSize = ImportStateManager.DEF_CHUNK_SIZE) {
         this.chunkSize = initChunkSize
+
+        // Attempt rehydrate  of imports state from local storage
+        this.rehydrateState()
+    }
+
+    /**
+     * Attempt to rehydrate and init `storageKeyStack` state from local storage.
+     */
+    async rehydrateState() {
+        let initState
+        try {
+            const {
+                [ImportStateManager.STATE_STORAGE_KEY]: savedState,
+            } = await browser.storage.local.get({
+                [ImportStateManager.STATE_STORAGE_KEY]: [],
+            })
+            initState = savedState
+        } catch (error) {
+            initState = []
+        } finally {
+            this.storageKeyStack = initState
+        }
     }
 
     /**
@@ -64,8 +87,20 @@ class ImportStateManager {
             this.storageKeyStack.length,
         )
 
-        this.storageKeyStack.push(chunkKey) // Track storage key in stack state
-        await browser.storage.local.set({ [chunkKey]: chunk }) // Store chunk
+        // Track new storage key in local key state
+        this.storageKeyStack.push(chunkKey)
+
+        const {
+            [ImportStateManager.STATE_STORAGE_KEY]: oldKeyState,
+        } = await browser.storage.local.get({
+            [ImportStateManager.STATE_STORAGE_KEY]: [],
+        })
+
+        // Store new chunk + update persisted import chunk keys state
+        await browser.storage.local.set({
+            [chunkKey]: chunk,
+            [ImportStateManager.STATE_STORAGE_KEY]: [...oldKeyState, chunkKey],
+        })
     }
 
     async getChunk(chunkKey) {
@@ -98,13 +133,20 @@ class ImportStateManager {
         await browser.storage.local.set({ [chunkKey]: remainingChunk })
     }
 
-    async clear() {
+    /**
+     * Clears all local and persisted states.
+     */
+    async clearItems() {
         let key
 
+        // Remove each chunk data from state and storage
         while (this.storageKeyStack.length) {
             key = this.storageKeyStack.pop()
             await browser.storage.local.remove(key)
         }
+
+        // Remove persisted state from storage
+        await browser.storage.local.remove(ImportStateManager.STATE_STORAGE_KEY)
     }
 }
 
