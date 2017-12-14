@@ -1,6 +1,6 @@
 import { mapToObject } from 'src/util/map-set-helpers'
 
-class ImportStateManager {
+export class ImportStateManager {
     static STATE_STORAGE_KEY = 'import-state-manager'
     static STORAGE_PREFIX = 'import-items-'
     static DEF_CHUNK_SIZE = 100
@@ -109,12 +109,20 @@ class ImportStateManager {
     }
 
     /**
-     * @param {Map<string, ImportItem>} itemsMap Array of import items to set as state.
+     * @param {Map<string, ImportItem>} itemsMap Array of import items to add to state.
      */
-    async setItems(itemsMap) {
+    async addItems(itemsMap) {
         for (const itemsChunk of this.splitChunks(itemsMap)) {
             await this.addChunk(itemsChunk)
         }
+    }
+
+    /**
+     * @param {Map<string, ImportItem>} itemsMap Array of import items to set as state.
+     */
+    async setItems(itemsMap) {
+        await this.clearItems()
+        await this.addItems(itemsMap)
     }
 
     /**
@@ -150,4 +158,6 @@ class ImportStateManager {
     }
 }
 
-export default ImportStateManager
+const instance = new ImportStateManager()
+
+export default instance
