@@ -1,8 +1,10 @@
-import chunk from 'lodash/fp/chunk'
+import { mapToObject } from 'src/util/map-set-helpers'
 
 class ImportStateManager {
     static STORAGE_PREFIX = 'import-items-'
     static DEF_CHUNK_SIZE = 100
+    static generateChunkKey = key =>
+        `${ImportStateManager.STORAGE_PREFIX}${key}`
 
     /**
      * @property {string[]} Stack of different storage keys used for storing import items state.
@@ -10,15 +12,15 @@ class ImportStateManager {
     storageKeyStack = []
 
     /**
-     * @property {(Array<any>) => Array<Array<any>>} Function to handle chunking of input arrays.
+     * @property {number}
      */
-    splitChunks
+    chunkSize
 
     /**
      * @param {number} [chunkSize] Unsigned int to represent size of chunks to return from each `getItems` iteration.
      */
-    constructor(chunkSize = ImportStateManager.DEF_CHUNK_SIZE) {
-        this.splitChunks = chunk(chunkSize)
+    constructor(initChunkSize = ImportStateManager.DEF_CHUNK_SIZE) {
+        this.chunkSize = initChunkSize
     }
 
     /**
@@ -28,32 +30,55 @@ class ImportStateManager {
      */
     async *getItems() {
         for (const key in this.storageKeyStack) {
-            const storage = await browser.storage.local.get(key)
+            const chunkKey = ImportStateManager.generateChunkKey(key)
 
             // Each iteration should yield both the current chunk key and assoc. chunk values (import items)
-            yield {
-                chunkKey: key,
-                chunk: storage[key],
-            }
+            yield { chunkKey, chunk: await this.getChunk(chunkKey) }
         }
     }
 
     /**
-     * @param {Array<ImportItem>} items Array of import items to add to state.
+     * Splits up a Map into an Array of objects of specified size to use as state chunks.
+     *
+     * @param {Map<string|number, any>} map Map of key value pairs.
+     * @returns {any[]} Array of objects of size `this.chunkSize`, created from input Map.
      */
-    async setItems(items) {
-        const chunkedItems = this.splitChunks(items)
+    splitChunks(map) {
+        const pairs = [...map]
+        const chunks = []
 
-        for (const itemsChunk in chunkedItems) {
-            // Generate current chunk's key
-            const currKey = `${ImportStateManager.STORAGE_PREFIX}${this
-                .storageKeyStack.length}`
+        for (let i = 0; i < pairs.length; i += this.chunkSize) {
+            const pairsMap = new Map(pairs.slice(i, i + this.chunkSize))
+            chunks.push(mapToObject(pairsMap))
+        }
 
-            // Add current chunk's key to key stack state
-            this.storageKeyStack.push(currKey)
+        return chunks
+    }
 
-            // Store current chunk under generated key
-            await browser.storage.local.set({ [currKey]: itemsChunk })
+    /**
+     * @param {string} chunkKey Storage key to store chunk as a value of.
+     * @param {any} chunk Chunk of total state to store.
+     */
+    async addChunk(chunk) {
+        const chunkKey = ImportStateManager.generateChunkKey(
+            this.storageKeyStack.length,
+        )
+
+        this.storageKeyStack.push(chunkKey) // Track storage key in stack state
+        await browser.storage.local.set({ [chunkKey]: chunk }) // Store chunk
+    }
+
+    async getChunk(chunkKey) {
+        const storage = await browser.storage.local.get(chunkKey)
+        return storage[chunkKey]
+    }
+
+    /**
+     * @param {Map<string, ImportItem>} itemsMap Array of import items to set as state.
+     */
+    async setItems(itemsMap) {
+        for (const itemsChunk of this.splitChunks(itemsMap)) {
+            await this.addChunk(itemsChunk)
         }
     }
 
