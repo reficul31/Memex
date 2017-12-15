@@ -6,7 +6,6 @@ import {
 } from 'src/options/imports/constants'
 import { differMaps } from 'src/util/map-set-helpers'
 import getEstimateCounts from './import-estimates'
-import processImportItem from './import-item-processor'
 import stateManager from './import-state'
 import createImportItems from './import-item-creation'
 import {
@@ -29,8 +28,10 @@ class ImportConnectionHandler {
 
     constructor(port) {
         this.port = port
-
-        this.importer = new ProgressManager(this.processChunk, DEF_CONCURRENCY)
+        this.importer = new ProgressManager(
+            DEF_CONCURRENCY,
+            this.itemCompleteCb,
+        )
 
         // Handle any incoming messages to control theimporter
         port.onMessage.addListener(this.messageListener)
@@ -53,6 +54,8 @@ class ImportConnectionHandler {
         }
     }
 
+    itemCompleteCb = msg => this.port.postMessage({ cmd: CMDS.NEXT, ...msg })
+
     messageListener = ({ cmd, payload }) => {
         switch (cmd) {
             case CMDS.START:
@@ -69,40 +72,6 @@ class ImportConnectionHandler {
                 return (this.importer.concurrency = payload)
             default:
                 return console.error(`unknown command: ${cmd}`)
-        }
-    }
-
-    /**
-     * @param {any} chunkData The data of currently-being-processed chunk (contains `chunk` and `chunkKey`).
-     * @param {number} concurrency Externally-specified concurrency level to use to implement concurrency (TODO).
-     * @param {any} token Token object to allow attaching of rejection callback, affording caller Promise cancellation.
-     */
-    processChunk = async ({ chunk, chunkKey }, concurrency, token) => {
-        for (const [encodedUrl, importItem] of Object.entries(chunk)) {
-            let status, url, error
-            try {
-                const processingResult = await processImportItem(
-                    importItem,
-                    token,
-                )
-                status = processingResult.status
-            } catch (err) {
-                // Throw execution was cancelled, throw error up the stack
-                if (err.cancelled) {
-                    throw err
-                }
-                error = err.message
-            } finally {
-                // Send item data + outcome status down to UI (and error if present)
-                this.port.postMessage({
-                    cmd: CMDS.NEXT,
-                    url: url,
-                    type: importItem.type,
-                    status,
-                    error,
-                })
-                await stateManager.removeItem(chunkKey, encodedUrl)
-            }
         }
     }
 
