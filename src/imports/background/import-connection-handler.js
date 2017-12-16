@@ -33,8 +33,11 @@ class ImportConnectionHandler {
             this.itemCompleteCb,
         )
 
-        // Handle any incoming messages to control theimporter
+        // Handle any incoming UI messages to control the importer
         port.onMessage.addListener(this.messageListener)
+
+        // Handle UI disconnection by stopping (pausing) progress
+        port.onDisconnect.addListener(() => this.importer.stop())
 
         this.attemptRehydrate()
     }
