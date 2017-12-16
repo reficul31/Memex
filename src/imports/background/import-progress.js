@@ -23,6 +23,7 @@ class ImportProgressManager {
     constructor(initConcurrency, afterItemCb = f => f) {
         this.concurrency = initConcurrency
         this.afterItemCb = afterItemCb
+        this.processImportItem = this.makeCancellable(processImportItem)
     }
 
     set concurrency(value) {
@@ -61,6 +62,17 @@ class ImportProgressManager {
         }
     }
 
+    makeCancellable = asyncFn => (...args) =>
+        new Promise((resolve, reject) => {
+            // Bind the reject callback to token to allow outside cancellation of `this` Promise
+            this.token.cancel = reject
+
+            // Run orig async function
+            asyncFn(...args)
+                .then(resolve)
+                .catch(reject)
+        })
+
     /**
      * @param {any} chunkData The chunk of import item state that is currently being processed
      */
@@ -68,7 +80,7 @@ class ImportProgressManager {
         for (const [encodedUrl, importItem] of Object.entries(chunk)) {
             let status, url, error
             try {
-                const res = await processImportItem(importItem, this.token)
+                const res = await this.processImportItem(importItem)
                 status = res.status
             } catch (err) {
                 // Throw execution was cancelled, throw error up the stack
