@@ -4,7 +4,7 @@ import stateManager from './import-state'
 import processImportItem from './import-item-processor'
 
 class ImportProgressManager {
-    static STATE_STORAGE_KEY = 'import-running-state'
+    static IMPORTS_PROGRESS_KEY = 'is-imports-in-progress'
     static CONCURR_LIMIT = 10
 
     /**
@@ -43,6 +43,22 @@ class ImportProgressManager {
             // Update Promise concurrency affording functionality
             this.runConcurrent = promiseLimit(value)
         }
+    }
+
+    async getImportInProgressFlag() {
+        const {
+            [ImportProgressManager.IMPORTS_PROGRESS_KEY]: flag,
+        } = await browser.storage.local.get({
+            [ImportProgressManager.IMPORTS_PROGRESS_KEY]: false,
+        })
+
+        return flag
+    }
+
+    async setImportInProgressFlag(value) {
+        return await browser.storage.local.set({
+            [ImportProgressManager.IMPORTS_PROGRESS_KEY]: value,
+        })
     }
 
     /**

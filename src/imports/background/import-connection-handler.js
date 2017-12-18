@@ -8,11 +8,6 @@ import { differMaps } from 'src/util/map-set-helpers'
 import getEstimateCounts from './import-estimates'
 import stateManager from './import-state'
 import createImportItems from './import-item-creation'
-import {
-    getImportInProgressFlag,
-    setImportInProgressFlag,
-    clearImportInProgressFlag,
-} from '../'
 import ProgressManager from './import-progress'
 
 class ImportConnectionHandler {
@@ -44,7 +39,8 @@ class ImportConnectionHandler {
 
     async attemptRehydrate() {
         // If import isn't started earlier, get estimates and set view state to init
-        const importInProgress = await getImportInProgressFlag()
+        const importInProgress = await this.importer.getImportInProgressFlag()
+
         if (!importInProgress) {
             // Make sure estimates view init'd with count data
             const estimateCounts = await getEstimateCounts({
@@ -116,13 +112,14 @@ class ImportConnectionHandler {
      */
     async startImport(allowTypes) {
         // Perform history-stubs, vists, and history import state creation, if import not in progress
-        const importInProgress = await getImportInProgressFlag()
+        const importInProgress = await this.importer.getImportInProgressFlag()
         if (!importInProgress) {
             await this.prepareImportItems(allowTypes)
         }
 
         this.port.postMessage({ cmd: CMDS.START }) // Tell UI to finish loading state and move into progress view
-        setImportInProgressFlag()
+
+        this.importer.setImportInProgressFlag(true)
         this.importer.start()
     }
 
@@ -131,7 +128,7 @@ class ImportConnectionHandler {
      * (either after completion or cancellation).
      */
     async finishImport() {
-        clearImportInProgressFlag()
+        this.importer.setImportInProgressFlag(false)
 
         // Re-init the estimates view with updated estimates data
         const estimateCounts = await getEstimateCounts({ forceRecalc: true })
@@ -140,13 +137,13 @@ class ImportConnectionHandler {
 
     async cancelImport() {
         this.importer.stop()
+        this.importer.setImportInProgressFlag(false)
 
         // Clean up any import-related stubs or state
         await stateManager.clearItems()
 
         // Resume UI at complete state
         this.port.postMessage({ cmd: CMDS.COMPLETE })
-        clearImportInProgressFlag()
     }
 }
 
