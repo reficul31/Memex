@@ -5,7 +5,7 @@ import processImportItem from './import-item-processor'
 
 class ImportProgressManager {
     static STATE_STORAGE_KEY = 'import-running-state'
-    static CONCURR_LIMIT = 5
+    static CONCURR_LIMIT = 10
 
     /**
      * @property {any[]} Token objects with `cancel` method to afford cancellation of currently
