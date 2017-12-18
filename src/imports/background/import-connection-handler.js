@@ -27,11 +27,11 @@ class ImportConnectionHandler {
     importer
 
     constructor(port) {
+        // Main `runtime.Port` that this class hides away to handle connection with the imports UI script
         this.port = port
-        this.importer = new ProgressManager(
-            DEF_CONCURRENCY,
-            this.itemCompleteCb,
-        )
+
+        // Initialize the `ProgressManager` to run the import processing logic on import items state
+        this.importer = new ProgressManager(DEF_CONCURRENCY, this.itemObserver)
 
         // Handle any incoming UI messages to control the importer
         port.onMessage.addListener(this.messageListener)
@@ -57,7 +57,15 @@ class ImportConnectionHandler {
         }
     }
 
-    itemCompleteCb = msg => this.port.postMessage({ cmd: CMDS.NEXT, ...msg })
+    /**
+     * Object containing `next` and `complete` methods for the `ProgressManager` to
+     * pass messages back along the connection as it observes import items finishing
+     * (currently used to send item data for display in the UI).
+     */
+    itemObserver = {
+        next: msg => this.port.postMessage({ cmd: CMDS.NEXT, ...msg }),
+        complete: () => this.port.postMessage({ cmd: CMDS.COMPLETE }),
+    }
 
     messageListener = ({ cmd, payload }) => {
         switch (cmd) {

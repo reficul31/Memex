@@ -8,12 +8,14 @@ class ImportProgressManager {
     static CONCURR_LIMIT = 5
 
     /**
-     * @property {any[]} Token objects with `cancel` method to afford cancellation of currently running Promises.
+     * @property {any[]} Token objects with `cancel` method to afford cancellation of currently
+     *  running Promises.
      */
     tokens = []
 
     /**
-     * @property {number} Number between 0 and `this._concurrency` representing the latest scheduled job's index in `this.tokens`.
+     * @property {number} Number between 0 and `this._concurrency` representing the latest scheduled
+     *  job's index in `this.tokens`.
      */
     _tokenIndex = 0
 
@@ -23,13 +25,14 @@ class ImportProgressManager {
     _concurrency
 
     /**
-     * @property {(any) => void} Logic to run after item processed (used to send port message for each item).
+     * @property {any} Object containing `next` and `complete` methods to run after each item and when
+     *  all items complete, respecitively.
      */
-    afterItemCb
+    observer
 
-    constructor(initConcurrency, afterItemCb = f => f) {
+    constructor(initConcurrency, initObserver) {
         this.concurrency = initConcurrency
-        this.afterItemCb = afterItemCb
+        this.observer = initObserver
 
         this.processImportItem = this.makeCancellable(processImportItem)
     }
@@ -68,6 +71,8 @@ class ImportProgressManager {
      * Start execution
      */
     async start() {
+        let cancelled = false
+
         // Iterate through data chunks from the state manager
         for await (const { chunk, chunkKey } of stateManager.getItems()) {
             try {
@@ -79,10 +84,16 @@ class ImportProgressManager {
             } catch (err) {
                 // If execution cancelled break Iterator processing
                 if (err.cancelled) {
+                    cancelled = true
                     break
                 }
                 console.error(err)
             }
+        }
+
+        if (!cancelled) {
+            // Notify observer that we're done!
+            this.observer.complete()
         }
     }
 
@@ -125,29 +136,30 @@ class ImportProgressManager {
      * @returns {(chunkEntry) => Promise<void>} Async function affording processing of single entry in chunk.
      */
     processItem = chunkKey => async ([encodedUrl, importItem]) => {
-        let status, url, error
+        // Used to flag if `this` async logic gets cancelled (don't send message)
         let cancelled = false
+
+        // Used to build the message to send to observer
+        const msg = {
+            type: importItem.type,
+            url: importItem.url,
+        }
 
         try {
             const res = await this.processImportItem(importItem)
-            status = res.status
+            msg.status = res.status
         } catch (err) {
             // Throw execution was cancelled, throw error up the stack
             if (err.cancelled) {
                 cancelled = true
                 throw err
             } else {
-                error = err.message
+                msg.error = err.message
             }
         } finally {
             // Send item data + outcome status down to UI (and error if present)
             if (!cancelled) {
-                this.afterItemCb({
-                    type: importItem.type,
-                    url,
-                    status,
-                    error,
-                })
+                this.observer.next(msg)
                 await stateManager.removeItem(chunkKey, encodedUrl)
             }
         }
