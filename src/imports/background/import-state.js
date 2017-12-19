@@ -68,7 +68,7 @@ export class ImportStateManager {
      * @yields {any} Object containing `chunkKey` and `chunk` pair, corresponding to the chunk storage key
      *  and value at that storage key, respectively.
      */
-    *getItems(includeErrs = true) {
+    *getItems(includeErrs = false) {
         for (const chunkKey of this.storageKeyStack) {
             yield this.getChunk(chunkKey)
         }
