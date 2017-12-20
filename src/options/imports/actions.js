@@ -37,6 +37,7 @@ export const setShowOldExt = createAction('imports/setShowOldExt')
 export const toggleAdvMode = createAction('imports-adv/toggleAdvMode')
 export const setFileUploading = createAction('imports-adv/setFileUploading')
 export const setConcurrency = createAction('imports-adv/setConcurrency')
+export const setProcessErrs = createAction('imports-adv/setProcessErrs')
 
 export const showDownloadDetails = createAction('imports/showDownloadDetails')
 
