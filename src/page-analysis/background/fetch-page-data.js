@@ -21,26 +21,30 @@ export const defaultOpts = {
  * @param {string} url The URL which points to the page to fetch text + meta-data for.
  * @param {number} [timeout=5000] The amount of ms to wait before throwing a fetch timeout error.
  * @param {IFetchPageDataOpts} opts
- * @return {any} Object containing `content` and `favIconURI` data fetched from the DOM pointed
- *  at by the `url` arg.
+ * @returns {any} Object containing `run` async cb and `cancel` cb to afford control over the request.
  */
-export default async function fetchPageData(
+export default function fetchPageData(
     { url = '', timeout = 10000, opts = defaultOpts } = { opts: defaultOpts },
 ) {
+    let run, cancel
+
     // Check if pdf and run code for pdf instead
     if (url.endsWith('.pdf')) {
-        return {
-            content: opts.includePageContent
+        run = async () =>
+            opts.includePageContent
                 ? await extractPdfContent({ url })
-                : undefined,
-        }
-    }
+                : undefined
+        cancel = () => {}
+    } else {
+        const req = fetchDOMFromUrl(url, timeout)
+        cancel = req.cancel
 
-    const { cancel, promise } = fetchDOMFromUrl(url, timeout)
-
-    return {
-        async promise() {
-            const doc = await promise
+        /**
+         * @return {Promise<any>} Resolves to an object containing `content` and `favIconURI` data
+         *  fetched from the DOM pointed at by the `url` of `fetchPageData` call.
+         */
+        run = async function() {
+            const doc = await req.run()
 
             // If DOM couldn't be fetched, then we can't get anything
             if (!doc) {
@@ -55,8 +59,9 @@ export default async function fetchPageData(
                     ? await extractPageContent({ doc, url })
                     : undefined,
             }
-        },
-        cancel,
+        }
+
+        return { run, cancel }
     }
 }
 
@@ -67,36 +72,40 @@ export default async function fetchPageData(
  *
  * @param {string} url The URL to fetch the DOM for.
  * @param {number} timeout The amount of ms to wait before throwing a fetch timeout error.
- * @return {Document} The DOM which the URL points to.
+ * @returns {any} Object containing `run` async cb and `cancel` cb to afford control over the request.
  */
 function fetchDOMFromUrl(url, timeout) {
     const req = new XMLHttpRequest()
 
     return {
         cancel: () => req.abort(),
-        promise: new Promise((resolve, reject) => {
-            req.timeout = timeout
-            // General non-HTTP errors
-            req.onerror = () => reject(new Error('Data fetch failed'))
-            // Allow non-200 respons statuses to be considered failures; timeouts show up as 0
-            req.onreadystatechange = function() {
-                if (this.readyState === 4) {
-                    switch (this.status) {
-                        case 0:
-                            return reject(new Error('Data fetch timeout'))
-                        case 200:
-                            return resolve(this.responseXML)
-                        default:
-                            return reject(new Error('Data fetch failed'))
+        /**
+         * @returns {Promise<Document>} Resolves to the DOM which the URL points to.
+         */
+        run: () =>
+            new Promise((resolve, reject) => {
+                req.timeout = timeout
+                // General non-HTTP errors
+                req.onerror = () => reject(new Error('Data fetch failed'))
+                // Allow non-200 respons statuses to be considered failures; timeouts show up as 0
+                req.onreadystatechange = function() {
+                    if (this.readyState === 4) {
+                        switch (this.status) {
+                            case 0:
+                                return reject(new Error('Data fetch timeout'))
+                            case 200:
+                                return resolve(this.responseXML)
+                            default:
+                                return reject(new Error('Data fetch failed'))
+                        }
                     }
                 }
-            }
 
-            req.open('GET', url)
+                req.open('GET', url)
 
-            // Sets the responseXML to be of Document/DOM type
-            req.responseType = 'document'
-            req.send()
-        }),
+                // Sets the responseXML to be of Document/DOM type
+                req.responseType = 'document'
+                req.send()
+            }),
     }
 }

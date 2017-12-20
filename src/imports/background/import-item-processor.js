@@ -146,15 +146,15 @@ export default class ImportItemProcessor {
      */
     async _createPageDoc({ url }) {
         // Do the page data fetch
-        const req = await fetchPageData({
+        const fetch = fetchPageData({
             url,
             opts: fetchPageDataOpts,
         })
 
-        this.abortXHR = req.cancel
+        this.abortXHR = fetch.cancel
 
         this._checkCancelled()
-        const { content, favIconURI } = await req.promise()
+        const { content, favIconURI } = await fetch.run()
 
         // Sort out all binary attachments
         const _attachments = await formatFavIconAttachment(favIconURI)

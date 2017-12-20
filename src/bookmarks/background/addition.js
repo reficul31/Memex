@@ -26,7 +26,7 @@ export async function createNewPageForBookmark(id, bookmarkInfo) {
     }
 
     try {
-        const { promise } = await fetchPageData({
+        const fetch = fetchPageData({
             url: bookmarkInfo.url,
             opts: {
                 includePageContent: true,
@@ -34,7 +34,7 @@ export async function createNewPageForBookmark(id, bookmarkInfo) {
             },
         })
 
-        const pageData = await promise()
+        const pageData = await fetch.run()
 
         pageDoc = {
             ...pageDoc,
