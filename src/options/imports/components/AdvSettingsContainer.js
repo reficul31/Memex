@@ -18,7 +18,7 @@ const mapDispatchToProps = dispatch => ({
     uploadTestData: event =>
         dispatch(actions.uploadTestData(event.target.files || [])),
     onPrevFailedToggle: event =>
-        dispatch(actions.setProcessErrs(event.target.checked)),
+        dispatch(actions.setPrevFailed(event.target.checked)),
 })
 
 export default connect(mapStateToProps, mapDispatchToProps)(AdvSettings)

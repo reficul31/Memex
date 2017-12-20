@@ -213,3 +213,8 @@ export const setConcurrencyLevel = concurrency => dispatch => {
     dispatch(setConcurrency(concurrency))
     port.postMessage({ cmd: CMDS.SET_CONCURRENCY, payload: concurrency })
 }
+
+export const setPrevFailed = value => dispatch => {
+    dispatch(setProcessErrs(value))
+    port.postMessage({ cmd: CMDS.SET_PROCESS_ERRS, payload: value })
+}
