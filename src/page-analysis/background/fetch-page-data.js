@@ -36,18 +36,27 @@ export default async function fetchPageData(
         }
     }
 
-    const doc = await fetchDOMFromUrl(url, timeout)
-
-    // If DOM couldn't be fetched, then we can't get anything
-    if (!doc) {
-        throw new Error('Cannot fetch DOM')
-    }
+    const { cancel, promise } = fetchDOMFromUrl(url, timeout)
 
     return {
-        favIconURI: opts.includeFavIcon ? await extractFavIcon(doc) : undefined,
-        content: opts.includePageContent
-            ? await extractPageContent({ doc, url })
-            : undefined,
+        async promise() {
+            const doc = await promise
+
+            // If DOM couldn't be fetched, then we can't get anything
+            if (!doc) {
+                throw new Error('Cannot fetch DOM')
+            }
+
+            return {
+                favIconURI: opts.includeFavIcon
+                    ? await extractFavIcon(doc)
+                    : undefined,
+                content: opts.includePageContent
+                    ? await extractPageContent({ doc, url })
+                    : undefined,
+            }
+        },
+        cancel,
     }
 }
 
@@ -60,30 +69,34 @@ export default async function fetchPageData(
  * @param {number} timeout The amount of ms to wait before throwing a fetch timeout error.
  * @return {Document} The DOM which the URL points to.
  */
-const fetchDOMFromUrl = async (url, timeout) =>
-    new Promise((resolve, reject) => {
-        const req = new XMLHttpRequest()
+function fetchDOMFromUrl(url, timeout) {
+    const req = new XMLHttpRequest()
 
-        req.timeout = timeout
-        // General non-HTTP errors
-        req.onerror = () => reject(new Error('Data fetch failed'))
-        // Allow non-200 respons statuses to be considered failures; timeouts show up as 0
-        req.onreadystatechange = function() {
-            if (this.readyState === 4) {
-                switch (this.status) {
-                    case 0:
-                        return reject(new Error('Data fetch timeout'))
-                    case 200:
-                        return resolve(this.responseXML)
-                    default:
-                        return reject(new Error('Data fetch failed'))
+    return {
+        cancel: () => req.abort(),
+        promise: new Promise((resolve, reject) => {
+            req.timeout = timeout
+            // General non-HTTP errors
+            req.onerror = () => reject(new Error('Data fetch failed'))
+            // Allow non-200 respons statuses to be considered failures; timeouts show up as 0
+            req.onreadystatechange = function() {
+                if (this.readyState === 4) {
+                    switch (this.status) {
+                        case 0:
+                            return reject(new Error('Data fetch timeout'))
+                        case 200:
+                            return resolve(this.responseXML)
+                        default:
+                            return reject(new Error('Data fetch failed'))
+                    }
                 }
             }
-        }
 
-        req.open('GET', url)
+            req.open('GET', url)
 
-        // Sets the responseXML to be of Document/DOM type
-        req.responseType = 'document'
-        req.send()
-    })
+            // Sets the responseXML to be of Document/DOM type
+            req.responseType = 'document'
+            req.send()
+        }),
+    }
+}
