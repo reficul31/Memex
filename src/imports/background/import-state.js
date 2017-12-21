@@ -1,3 +1,5 @@
+import keys from 'lodash/fp/keys'
+
 import { mapToObject } from 'src/util/map-set-helpers'
 
 export class ImportStateManager {
@@ -84,6 +86,35 @@ export class ImportStateManager {
         }
     }
 
+    /**
+     * @param {string} key Key to attempt to find in error state.
+     * @returns {Promise<boolean>} Resolves to flag denoting existence of `key`.
+     */
+    async checkErrExists(key) {
+        for await (const { chunk } of this.getErrItems()) {
+            if (new Set(keys(chunk)).has(key)) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * @param {Map<T,U>} inputMap Map to diff against current items state.
+     * @returns {Map<T,U>} Subset (submap?) of `inputMap` containing no entries deemed to already exist in state.
+     */
+    async diffInputAgainstState(inputMap) {
+        let entries = [...inputMap]
+
+        for await (const { chunk } of this.getItems()) {
+            const currChunkKeys = new Set(keys(chunk))
+            entries = entries.filter(([key]) => !currChunkKeys.has(key))
+        }
+
+        return new Map(entries)
+    }
+
     getNextChunkKey = () =>
         `${ImportStateManager.STORAGE_PREFIX}${this.storageKeyStack.length}`
     getNextErrChunkKey = () =>
@@ -137,10 +168,15 @@ export class ImportStateManager {
     }
 
     /**
+     * Adds new items to the state, while ensuring duplicates get filtered out.
+     *
      * @param {Map<string, ImportItem>} itemsMap Array of import items to add to state.
      */
     async addItems(itemsMap) {
-        for (const itemsChunk of this.splitChunks(itemsMap)) {
+        // Reduce input by performing set difference on keys with current state
+        const filteredItemsMap = await this.diffInputAgainstState(itemsMap)
+
+        for (const itemsChunk of this.splitChunks(filteredItemsMap)) {
             await this.addChunk(itemsChunk)
         }
     }
@@ -158,6 +194,7 @@ export class ImportStateManager {
      *
      * @param {string} chunkKey Storage key of chunk in which item wanted to remove exists.
      * @param {string} itemKey Key within chunk pointing item to remove.
+     * @returns {any} The removed import item.
      */
     async removeItem(chunkKey, itemKey) {
         const { [chunkKey]: chunk } = await browser.storage.local.get({
@@ -179,6 +216,11 @@ export class ImportStateManager {
      */
     async flagAsError(chunkKey, itemKey) {
         const item = await this.removeItem(chunkKey, itemKey)
+
+        // Don't re-add if error already exists
+        if (!await this.checkErrExists(itemKey)) {
+            return
+        }
 
         let errChunkKey
         if (!this.errStorageKeyStack.length) {
