@@ -104,7 +104,7 @@ export class ImportStateManager {
      * @param {Map<T,U>} inputMap Map to diff against current items state.
      * @returns {Map<T,U>} Subset (submap?) of `inputMap` containing no entries deemed to already exist in state.
      */
-    async diffInputAgainstState(inputMap) {
+    async diffAgainstState(inputMap) {
         let entries = [...inputMap]
 
         for await (const { chunk } of this.getItems()) {
@@ -140,7 +140,6 @@ export class ImportStateManager {
     }
 
     /**
-     * @param {string} chunkKey Storage key to store chunk as a value of.
      * @param {any} chunk Chunk of total state to store.
      */
     async addChunk(chunk) {
@@ -168,15 +167,14 @@ export class ImportStateManager {
     }
 
     /**
-     * Adds new items to the state, while ensuring duplicates get filtered out.
-     *
      * @param {Map<string, ImportItem>} itemsMap Array of import items to add to state.
      */
     async addItems(itemsMap) {
-        // Reduce input by performing set difference on keys with current state
-        const filteredItemsMap = await this.diffInputAgainstState(itemsMap)
+        if (!itemsMap.size) {
+            return
+        }
 
-        for (const itemsChunk of this.splitChunks(filteredItemsMap)) {
+        for (const itemsChunk of this.splitChunks(itemsMap)) {
             await this.addChunk(itemsChunk)
         }
     }
@@ -256,16 +254,14 @@ export class ImportStateManager {
      * Clears all local and persisted states.
      */
     async clearItems() {
-        let key
+        // Remove persisted states from storage
+        await browser.storage.local.remove([
+            ...this.storageKeyStack,
+            ImportStateManager.STATE_STORAGE_KEY,
+        ])
 
-        // Remove each chunk data from state and storage
-        while (this.storageKeyStack.length) {
-            key = this.storageKeyStack.pop()
-            await browser.storage.local.remove(key)
-        }
-
-        // Remove persisted state from storage
-        await browser.storage.local.remove(ImportStateManager.STATE_STORAGE_KEY)
+        // Reset local state
+        this.storageKeyStack = []
     }
 }
 

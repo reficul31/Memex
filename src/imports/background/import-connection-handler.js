@@ -14,12 +14,6 @@ export default class ImportConnectionHandler {
      */
     importer
 
-    /**
-     * @property {any} Object containing boolean flags for each import item type key, representing whether
-     *  or not that type should be saved to state (user configurable via UI import-type checkboxes).
-     */
-    allowTypes
-
     constructor(port) {
         // Main `runtime.Port` that this class hides away to handle connection with the imports UI script
         this.port = port
@@ -57,16 +51,10 @@ export default class ImportConnectionHandler {
      */
     itemObserver = {
         next: msg => this.port.postMessage({ cmd: CMDS.NEXT, ...msg }),
-        complete: () => this.port.postMessage({ cmd: CMDS.COMPLETE }),
-    }
-
-    /**
-     * Update state manager with new items as they are created for estimates counts (as long as type allowed).
-     */
-    handleItemCreation = async ({ data, type }) => {
-        if (this.allowTypes[type]) {
-            await stateManager.addItems(data)
-        }
+        complete: () => {
+            stateManager.clearItems()
+            this.port.postMessage({ cmd: CMDS.COMPLETE })
+        },
     }
 
     messageListener = ({ cmd, payload }) => {
@@ -95,20 +83,19 @@ export default class ImportConnectionHandler {
      * or not to process that given type of imports.
      */
     async startImport(allowTypes) {
-        this.allowTypes = allowTypes
-
         // Perform history-stubs, vists, and history import state creation, if import not in progress
         const importInProgress = await this.importer.getImportInProgressFlag()
         if (!importInProgress) {
             await estimateManager.fetchCached({
                 forceRecalc: true,
-                onItemCreation: this.handleItemCreation,
+                persistItems: true,
             })
         }
 
         this.port.postMessage({ cmd: CMDS.START }) // Tell UI to finish loading state and move into progress view
 
         this.importer.setImportInProgressFlag(true)
+        this.importer.allowTypes = allowTypes
         this.importer.start()
     }
 

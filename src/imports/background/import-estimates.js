@@ -1,5 +1,3 @@
-import noop from 'lodash/fp/noop'
-
 import db from 'src/pouchdb'
 import {
     IMPORT_TYPE as TYPE,
@@ -9,6 +7,7 @@ import { differMaps } from 'src/util/map-set-helpers'
 import { pageKeyPrefix } from 'src/page-storage'
 import { bookmarkKeyPrefix } from 'src/bookmarks'
 import createImportItems from './import-item-creation'
+import stateManager from './import-state'
 
 /**
  * Object with keys for each import item type and corresponding unsigned int values,
@@ -110,7 +109,7 @@ class ImportEstimatesManager {
     /**
      * Handles calculating the remaining estimate counts for history, bookmark, and old-ext imports.
      */
-    async calcRemainingCounts(handleItemCreation) {
+    async calcRemainingCounts(persistItems) {
         let bookmarkItems
 
         // Import items creation will yield parts of the total items
@@ -123,8 +122,19 @@ class ImportEstimatesManager {
                 data = differMaps(bookmarkItems)(data)
             }
 
-            this.remaining[type] += data.size
-            await handleItemCreation({ data, type })
+            // Diff against progress cached in state manager (saves keeping items in memory)
+            const filteredData = await stateManager.diffAgainstState(data)
+
+            // Inc the count
+            this.remaining[type] += filteredData.size
+
+            // Cache current processed chunk for checking against future chunks
+            await stateManager.addItems(filteredData)
+        }
+
+        // Remove items cached during estimates calc, if not wanted
+        if (!persistItems) {
+            await stateManager.clearItems()
         }
     }
 
@@ -169,12 +179,12 @@ class ImportEstimatesManager {
     /**
      * Re-run local est calculations and persist them.
      */
-    async recalcState(onItemCreation) {
+    async recalcState(persistItems) {
         this.initCounts()
         this.calculatedAt = Date.now() // Update timestamp
 
         // Perform calcs
-        await this.calcRemainingCounts(onItemCreation)
+        await this.calcRemainingCounts(persistItems)
         await this.calcCompletedCounts()
 
         await this.persist() // Sync with persisted state
@@ -189,7 +199,7 @@ class ImportEstimatesManager {
      *  item data received in the process of estimating counts - these are useful data to avoid recalcing for
      *  import items state.
      */
-    async fetchCached({ forceRecalc = false, onItemCreation = noop }) {
+    async fetchCached({ forceRecalc = false, persistItems = false }) {
         // First sync local state with persisted
         await this.updateLocalState()
 
@@ -198,7 +208,7 @@ class ImportEstimatesManager {
             forceRecalc ||
             this.calculatedAt < Date.now() - ImportEstimatesManager.DAY_IN_MS
         ) {
-            await this.recalcState(onItemCreation)
+            await this.recalcState(persistItems)
         }
 
         return this.counts
